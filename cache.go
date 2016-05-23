@@ -216,3 +216,7 @@ func (c *Cache) gc() {
 		element = prev
 	}
 }
+
+func (c *Cache) GetSize() int64 {
+	return c.size
+}
