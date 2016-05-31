@@ -6,6 +6,13 @@ import (
 	"time"
 )
 
+type ItemState int
+const (
+	ItemStateNormal ItemState = iota
+	ItemStateExpired
+	ItemStateUpdating
+)
+
 type Sized interface {
 	Size() int64
 }
@@ -50,6 +57,7 @@ type Item struct {
 	size       int64
 	value      interface{}
 	element    *list.Element
+	state 	   ItemState
 }
 
 func newItem(key string, value interface{}, expires int64) *Item {
@@ -63,6 +71,7 @@ func newItem(key string, value interface{}, expires int64) *Item {
 		promotions: 0,
 		size:       size,
 		expires:    expires,
+		state:      ItemStateNormal,
 	}
 }
 
