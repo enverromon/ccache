@@ -16,6 +16,7 @@ type Cache struct {
 	bucketMask  uint32
 	deletables  chan *Item
 	promotables chan *Item
+	updating    chan *Item
 }
 
 // Create a new cache with the specified configuration
@@ -28,6 +29,7 @@ func New(config *Configuration) *Cache {
 		buckets:       make([]*bucket, config.buckets),
 		deletables:    make(chan *Item, config.deleteBuffer),
 		promotables:   make(chan *Item, config.promoteBuffer),
+		updating:      make(chan *Item, config.updatingBuffer),
 	}
 	for i := 0; i < int(config.buckets); i++ {
 		c.buckets[i] = &bucket{
@@ -157,6 +159,8 @@ func (c *Cache) worker() {
 			}
 		case item := <-c.deletables:
 			c.doDelete(item)
+		case item := <- c.updating:
+			c.doUpdate(item)
 		}
 	}
 
@@ -179,6 +183,10 @@ func (c *Cache) doDelete(item *Item) {
 		c.size -= item.size
 		c.list.Remove(item.element)
 	}
+}
+
+func (c *Cache)doUpdate(item *Item) {
+
 }
 
 func (c *Cache) doPromote(item *Item) bool {
