@@ -9,6 +9,7 @@ type Configuration struct {
 	updatingBuffer int
 	getsPerPromote int32
 	tracking       bool
+	updateCallback func(map[string]*Item) bool
 }
 
 // Creates a configuration object with sensible defaults
@@ -78,6 +79,11 @@ func (c *Configuration) GetsPerPromote(count int32) *Configuration {
 
 func (c *Configuration)UpdateBuffer(size uint32) *Configuration  {
 	c.updatingBuffer = int(size)
+	return c
+}
+
+func (c *Configuration)UpdateCallback(callback func(map[string]*Item) bool) *Configuration {
+	c.updateCallback = callback
 	return c
 }
 

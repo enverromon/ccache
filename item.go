@@ -17,6 +17,10 @@ type Sized interface {
 	Size() int64
 }
 
+type Updatable interface {
+	Key() string
+}
+
 type TrackedItem interface {
 	Value() interface{}
 	Release()
@@ -24,6 +28,7 @@ type TrackedItem interface {
 	TTL() time.Duration
 	Expires() time.Time
 	Extend(duration time.Duration)
+	SetStatus(state ItemState)
 }
 
 type nilItem struct{}
@@ -44,6 +49,9 @@ func (i *nilItem) Expires() time.Time {
 }
 
 func (i *nilItem) Extend(duration time.Duration) {
+}
+
+func (i *nilItem) SetStatus(state ItemState) {
 }
 
 var NilTracked = new(nilItem)
@@ -109,4 +117,8 @@ func (i *Item) Expires() time.Time {
 
 func (i *Item) Extend(duration time.Duration) {
 	atomic.StoreInt64(&i.expires, time.Now().Add(duration).Unix())
+}
+
+func (i *Item) SetStatus(state ItemState) {
+	i.state = state
 }
