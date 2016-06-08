@@ -151,9 +151,10 @@ func (c *Cache) set(key string, value interface{}, duration time.Duration) *Item
 	c.promote(item)
 
 	go func() {
-		timer := time.NewTimer(duration / 2)
-		<-timer.C
-		c.updating <- item
+		ticker := time.NewTicker(duration / 2)
+		for _ = range ticker.C {
+			c.updating <- item
+		}
 	}()
 
 	return item
