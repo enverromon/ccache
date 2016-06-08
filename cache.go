@@ -8,6 +8,15 @@ import (
 	"time"
 )
 
+type Stack struct {
+	items map[string]*Item
+	count int
+}
+
+func NewItemStack() *Stack {
+	return &Stack{items: make(map[string]*Item)}
+}
+
 type Cache struct {
 	*Configuration
 	list        *list.List
@@ -16,6 +25,8 @@ type Cache struct {
 	bucketMask  uint32
 	deletables  chan *Item
 	promotables chan *Item
+	updating    chan *Item
+	stack	    *Stack
 }
 
 // Create a new cache with the specified configuration
@@ -28,13 +39,19 @@ func New(config *Configuration) *Cache {
 		buckets:       make([]*bucket, config.buckets),
 		deletables:    make(chan *Item, config.deleteBuffer),
 		promotables:   make(chan *Item, config.promoteBuffer),
+		updating:      make(chan *Item, config.updatingBuffer),
 	}
 	for i := 0; i < int(config.buckets); i++ {
 		c.buckets[i] = &bucket{
 			lookup: make(map[string]*Item),
 		}
 	}
+
+	c.stack = NewItemStack()
+
 	go c.worker()
+	go c.updateWorker()
+
 	return c
 }
 
@@ -132,6 +149,13 @@ func (c *Cache) set(key string, value interface{}, duration time.Duration) *Item
 		c.deletables <- existing
 	}
 	c.promote(item)
+
+	go func() {
+		timer := time.NewTimer(duration / 2)
+		<-timer.C
+		c.updating <- item
+	}()
+
 	return item
 }
 
@@ -157,6 +181,8 @@ func (c *Cache) worker() {
 			}
 		case item := <-c.deletables:
 			c.doDelete(item)
+		case item := <- c.updating:
+			c.doUpdate(item)
 		}
 	}
 
@@ -172,6 +198,15 @@ drain:
 	}
 }
 
+func (c *Cache) updateWorker() {
+	ticker := time.NewTicker(time.Minute)
+	for _ = range ticker.C {
+		if c.updateCallback != nil {
+			c.updateCallback(c.stack.items)
+		}
+	}
+}
+
 func (c *Cache) doDelete(item *Item) {
 	if item.element == nil {
 		item.promotions = -2
@@ -179,6 +214,18 @@ func (c *Cache) doDelete(item *Item) {
 		c.size -= item.size
 		c.list.Remove(item.element)
 	}
+}
+
+func (c *Cache)doUpdate(item *Item) {
+	if item.state == ItemStateUpdating || item.state == ItemStateExpired {
+		// this item is updating or expired
+		return
+	}
+	item.state = ItemStateUpdating
+	//c.stack.items = append(c.stack.items[:c.stack.count], item)
+	key := item.value.(Updatable).Key()
+	c.stack.items[key] = item
+	c.stack.count++
 }
 
 func (c *Cache) doPromote(item *Item) bool {

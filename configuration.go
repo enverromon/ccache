@@ -6,8 +6,10 @@ type Configuration struct {
 	itemsToPrune   int
 	deleteBuffer   int
 	promoteBuffer  int
+	updatingBuffer int
 	getsPerPromote int32
 	tracking       bool
+	updateCallback func(map[string]*Item) bool
 }
 
 // Creates a configuration object with sensible defaults
@@ -20,6 +22,7 @@ func Configure() *Configuration {
 		deleteBuffer:   1024,
 		getsPerPromote: 3,
 		promoteBuffer:  1024,
+		updatingBuffer: 1024,
 		maxSize:        5000,
 		tracking:       false,
 	}
@@ -71,6 +74,16 @@ func (c *Configuration) DeleteBuffer(size uint32) *Configuration {
 // [3]
 func (c *Configuration) GetsPerPromote(count int32) *Configuration {
 	c.getsPerPromote = count
+	return c
+}
+
+func (c *Configuration)UpdateBuffer(size uint32) *Configuration  {
+	c.updatingBuffer = int(size)
+	return c
+}
+
+func (c *Configuration)UpdateCallback(callback func(map[string]*Item) bool) *Configuration {
+	c.updateCallback = callback
 	return c
 }
 
