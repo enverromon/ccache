@@ -66,6 +66,8 @@ type Item struct {
 	value      interface{}
 	element    *list.Element
 	state 	   ItemState
+
+	done       chan bool
 }
 
 func newItem(key string, value interface{}, expires int64) *Item {
@@ -80,6 +82,7 @@ func newItem(key string, value interface{}, expires int64) *Item {
 		size:       size,
 		expires:    expires,
 		state:      ItemStateNormal,
+		done:	    make(chan bool),
 	}
 }
 

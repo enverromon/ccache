@@ -117,6 +117,7 @@ func (c *Cache) Fetch(key string, duration time.Duration, fetch func() (interfac
 func (c *Cache) Delete(key string) bool {
 	item := c.bucket(key).delete(key)
 	if item != nil {
+		item.done <- true
 		c.deletables <- item
 		return true
 	}
@@ -146,14 +147,25 @@ func (c *Cache) deleteItem(bucket *bucket, item *Item) {
 func (c *Cache) set(key string, value interface{}, duration time.Duration) *Item {
 	item, existing := c.bucket(key).set(key, value, duration)
 	if existing != nil {
+		existing.done <- true
 		c.deletables <- existing
 	}
 	c.promote(item)
 
 	go func() {
+		if duration / 2 < 0 {
+			return
+		}
 		ticker := time.NewTicker(duration / 2)
-		for _ = range ticker.C {
-			c.updating <- item
+		for {
+			select {
+			case <- ticker.C:
+				c.updating <- item
+			case <- item.done:
+				return
+			default:
+				return
+			}
 		}
 	}()
 
@@ -203,7 +215,7 @@ func (c *Cache) updateWorker() {
 	ticker := time.NewTicker(time.Minute)
 	for _ = range ticker.C {
 		if c.updateCallback != nil {
-			c.updateCallback(c.stack.items)
+			go c.updateCallback(c.stack.items)
 		}
 	}
 }
