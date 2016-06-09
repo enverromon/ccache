@@ -163,8 +163,6 @@ func (c *Cache) set(key string, value interface{}, duration time.Duration) *Item
 				c.updating <- item
 			case <- item.done:
 				return
-			default:
-				return
 			}
 		}
 	}()
@@ -212,7 +210,7 @@ drain:
 }
 
 func (c *Cache) updateWorker() {
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(time.Second  * time.Duration(c.updateGranularity))
 	for _ = range ticker.C {
 		if c.updateCallback != nil {
 			go c.updateCallback(c.stack.items)
