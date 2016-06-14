@@ -6,14 +6,16 @@ import (
 	"hash/fnv"
 	"sync/atomic"
 	"time"
+	"sync"
 )
 
 type Stack struct {
 	items map[string]*Item
 	count int
+	sync.RWMutex
 }
 
-func NewItemStack() *Stack {
+func NewStack() *Stack {
 	return &Stack{items: make(map[string]*Item)}
 }
 
@@ -47,7 +49,7 @@ func New(config *Configuration) *Cache {
 		}
 	}
 
-	c.stack = NewItemStack()
+	c.stack = NewStack()
 
 	go c.worker()
 	go c.updateWorker()
@@ -141,6 +143,7 @@ func (c *Cache) Stop() {
 
 func (c *Cache) deleteItem(bucket *bucket, item *Item) {
 	bucket.delete(item.key) //stop other GETs from getting it
+	item.done <- true
 	c.deletables <- item
 }
 
@@ -213,7 +216,9 @@ func (c *Cache) updateWorker() {
 	ticker := time.NewTicker(time.Second  * time.Duration(c.updateGranularity))
 	for _ = range ticker.C {
 		if c.updateCallback != nil {
-			go c.updateCallback(c.stack.items)
+			c.stack.RLock()
+			defer c.stack.RUnlock()
+			c.updateCallback(c.stack.items)
 		}
 	}
 }
@@ -233,10 +238,12 @@ func (c *Cache)doUpdate(item *Item) {
 		return
 	}
 	item.state = ItemStateUpdating
-	//c.stack.items = append(c.stack.items[:c.stack.count], item)
 	key := item.value.(Updatable).Key()
+	c.stack.Lock()
+	defer c.stack.Unlock()
 	c.stack.items[key] = item
 	c.stack.count++
+
 }
 
 func (c *Cache) doPromote(item *Item) bool {
