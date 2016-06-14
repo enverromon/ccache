@@ -29,6 +29,7 @@ type Cache struct {
 	promotables chan *Item
 	updating    chan *Item
 	stack	    *Stack
+	updatesClose chan bool
 }
 
 // Create a new cache with the specified configuration
@@ -42,6 +43,7 @@ func New(config *Configuration) *Cache {
 		deletables:    make(chan *Item, config.deleteBuffer),
 		promotables:   make(chan *Item, config.promoteBuffer),
 		updating:      make(chan *Item, config.updatingBuffer),
+		updatesClose:  make(chan bool),
 	}
 	for i := 0; i < int(config.buckets); i++ {
 		c.buckets[i] = &bucket{
@@ -138,6 +140,7 @@ func (c *Cache) Clear() {
 // Stops the background worker. Operations performed on the cache after Stop
 // is called are likely to panic
 func (c *Cache) Stop() {
+	c.updatesClose <- true
 	close(c.promotables)
 }
 
@@ -214,11 +217,16 @@ drain:
 
 func (c *Cache) updateWorker() {
 	ticker := time.NewTicker(time.Second  * time.Duration(c.updateGranularity))
-	for _ = range ticker.C {
-		if c.updateCallback != nil {
-			c.stack.RLock()
-			defer c.stack.RUnlock()
-			c.updateCallback(c.stack.items)
+	for {
+		select {
+		case <- ticker.C:
+			if c.updateCallback != nil {
+				c.stack.RLock()
+				c.updateCallback(c.stack.items)
+				c.stack.RUnlock()
+			}
+		case <- c.updatesClose:
+			return
 		}
 	}
 }
