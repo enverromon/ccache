@@ -159,10 +159,7 @@ func (c *Cache) set(key string, value interface{}, duration time.Duration) *Item
 	c.promote(item)
 
 	go func() {
-		if duration / 2 < 0 {
-			return
-		}
-		ticker := time.NewTicker(duration / 2)
+		ticker := time.NewTicker(time.Second * time.Duration(c.updateDelta))
 		for {
 			select {
 			case <- ticker.C:
