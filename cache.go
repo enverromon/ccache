@@ -218,9 +218,9 @@ func (c *Cache) updateWorker() {
 		select {
 		case <- ticker.C:
 			if c.updateCallback != nil {
-				c.stack.RLock()
+				c.stack.Lock()
 				c.updateCallback(c.stack.items)
-				c.stack.RUnlock()
+				c.stack.Unlock()
 			}
 		case <- c.updatesClose:
 			return
