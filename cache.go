@@ -6,18 +6,7 @@ import (
 	"hash/fnv"
 	"sync/atomic"
 	"time"
-	"sync"
 )
-
-type Stack struct {
-	items map[string]*Item
-	count int
-	sync.RWMutex
-}
-
-func NewStack() *Stack {
-	return &Stack{items: make(map[string]*Item)}
-}
 
 type Cache struct {
 	*Configuration
@@ -27,9 +16,6 @@ type Cache struct {
 	bucketMask  uint32
 	deletables  chan *Item
 	promotables chan *Item
-	updating    chan *Item
-	stack	    *Stack
-	updatesClose chan bool
 }
 
 // Create a new cache with the specified configuration
@@ -42,8 +28,6 @@ func New(config *Configuration) *Cache {
 		buckets:       make([]*bucket, config.buckets),
 		deletables:    make(chan *Item, config.deleteBuffer),
 		promotables:   make(chan *Item, config.promoteBuffer),
-		updating:      make(chan *Item, config.updatingBuffer),
-		updatesClose:  make(chan bool),
 	}
 	for i := 0; i < int(config.buckets); i++ {
 		c.buckets[i] = &bucket{
@@ -51,10 +35,7 @@ func New(config *Configuration) *Cache {
 		}
 	}
 
-	c.stack = NewStack()
-
 	go c.worker()
-	go c.updateWorker()
 
 	return c
 }
@@ -86,8 +67,8 @@ func (c *Cache) TrackingGet(key string) TrackedItem {
 }
 
 // Set the value in the cache for the specified duration
-func (c *Cache) Set(key string, value interface{}, duration time.Duration) {
-	c.set(key, value, duration)
+func (c *Cache) Set(key string, value interface{}, duration time.Duration) *Item {
+	return c.set(key, value, duration)
 }
 
 // Replace the value if it exists, does not set if it doesn't.
@@ -140,7 +121,6 @@ func (c *Cache) Clear() {
 // Stops the background worker. Operations performed on the cache after Stop
 // is called are likely to panic
 func (c *Cache) Stop() {
-	c.updatesClose <- true
 	close(c.promotables)
 }
 
@@ -157,18 +137,6 @@ func (c *Cache) set(key string, value interface{}, duration time.Duration) *Item
 		c.deletables <- existing
 	}
 	c.promote(item)
-
-	go func() {
-		ticker := time.NewTicker(time.Second * time.Duration(c.updateDelta))
-		for {
-			select {
-			case <- ticker.C:
-				c.updating <- item
-			case <- item.done:
-				return
-			}
-		}
-	}()
 
 	return item
 }
@@ -195,8 +163,6 @@ func (c *Cache) worker() {
 			}
 		case item := <-c.deletables:
 			c.doDelete(item)
-		case item := <- c.updating:
-			c.doUpdate(item)
 		}
 	}
 
@@ -212,22 +178,6 @@ drain:
 	}
 }
 
-func (c *Cache) updateWorker() {
-	ticker := time.NewTicker(time.Second  * time.Duration(c.updateGranularity))
-	for {
-		select {
-		case <- ticker.C:
-			if c.updateCallback != nil {
-				c.stack.Lock()
-				c.updateCallback(c.stack.items)
-				c.stack.Unlock()
-			}
-		case <- c.updatesClose:
-			return
-		}
-	}
-}
-
 func (c *Cache) doDelete(item *Item) {
 	if item.element == nil {
 		item.promotions = -2
@@ -235,20 +185,6 @@ func (c *Cache) doDelete(item *Item) {
 		c.size -= item.size
 		c.list.Remove(item.element)
 	}
-}
-
-func (c *Cache)doUpdate(item *Item) {
-	if item.state == ItemStateUpdating || item.state == ItemStateExpired {
-		// this item is updating or expired
-		return
-	}
-	item.state = ItemStateUpdating
-	key := item.value.(Updatable).Key()
-	c.stack.Lock()
-	defer c.stack.Unlock()
-	c.stack.items[key] = item
-	c.stack.count++
-
 }
 
 func (c *Cache) doPromote(item *Item) bool {
