@@ -1,15 +1,17 @@
 package ccache
 
 type Configuration struct {
-	maxSize        int64
-	buckets        int
-	itemsToPrune   int
-	deleteBuffer   int
-	promoteBuffer  int
-	updatingBuffer int
-	getsPerPromote int32
-	tracking       bool
-	updateCallback func(map[string]*Item) bool
+	maxSize           int64
+	buckets           int
+	itemsToPrune      int
+	deleteBuffer      int
+	promoteBuffer     int
+	updatingBuffer    int
+	getsPerPromote    int32
+	tracking          bool
+	updateCallback    func(map[string]*Item) bool
+	updateGranularity int
+	updateDelta       int
 }
 
 // Creates a configuration object with sensible defaults
@@ -25,6 +27,9 @@ func Configure() *Configuration {
 		updatingBuffer: 1024,
 		maxSize:        5000,
 		tracking:       false,
+		updateCallback: nil,
+		updateGranularity: 120,
+		updateDelta: 60,
 	}
 }
 
@@ -82,8 +87,14 @@ func (c *Configuration)UpdateBuffer(size uint32) *Configuration  {
 	return c
 }
 
-func (c *Configuration)UpdateCallback(callback func(map[string]*Item) bool) *Configuration {
+func (c *Configuration)UpdateCallback(callback func(map[string]*Item) bool, granularity int) *Configuration {
+	c.updateGranularity = granularity
 	c.updateCallback = callback
+	return c
+}
+
+func (c *Configuration) UpdateDelta(delta int) *Configuration {
+	c.updateDelta = delta
 	return c
 }
 
