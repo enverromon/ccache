@@ -56,6 +56,17 @@ func (c *Cache) Get(key string) *Item {
 	return item
 }
 
+func (c *Cache) GetWithoutPromote(key string) *Item {
+	item := c.bucket(key).get(key)
+	return item
+}
+
+func (c *Cache) PromoteObject(item *Item) {
+	if item.expires > time.Now().Unix() {
+		c.promote(item)
+	}
+}
+
 // Used when the cache was created with the Track() configuration option.
 // Avoid otherwise
 func (c *Cache) TrackingGet(key string) TrackedItem {
