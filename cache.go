@@ -12,6 +12,7 @@ type Cache struct {
 	*Configuration
 	list        *list.List
 	size        int64
+	elementsNb  int64
 	buckets     []*bucket
 	bucketMask  uint32
 	deletables  chan *Item
@@ -67,8 +68,8 @@ func (c *Cache) TrackingGet(key string) TrackedItem {
 }
 
 // Set the value in the cache for the specified duration
-func (c *Cache) Set(key string, value interface{}, duration time.Duration) *Item {
-	return c.set(key, value, duration)
+func (c *Cache) Set(key string, value interface{}, duration time.Duration, promote bool) *Item {
+	return c.set(key, value, duration, promote)
 }
 
 // Replace the value if it exists, does not set if it doesn't.
@@ -79,7 +80,7 @@ func (c *Cache) Replace(key string, value interface{}) bool {
 	if item == nil {
 		return false
 	}
-	c.Set(key, value, item.TTL())
+	c.Set(key, value, item.TTL(), false)
 	return true
 }
 
@@ -95,7 +96,7 @@ func (c *Cache) Fetch(key string, duration time.Duration, fetch func() (interfac
 	if err != nil {
 		return nil, err
 	}
-	return c.set(key, value, duration), nil
+	return c.set(key, value, duration, true), nil
 }
 
 // Remove the item from the cache, return true if the item was present, false otherwise.
@@ -128,12 +129,15 @@ func (c *Cache) deleteItem(bucket *bucket, item *Item) {
 	c.deletables <- item
 }
 
-func (c *Cache) set(key string, value interface{}, duration time.Duration) *Item {
+func (c *Cache) set(key string, value interface{}, duration time.Duration, promote bool) *Item {
 	item, existing := c.bucket(key).set(key, value, duration)
 	if existing != nil {
 		c.deletables <- existing
 	}
-	c.promote(item)
+	if promote {
+		c.promote(item)
+	}
+	c.elementsNb++
 
 	return item
 }
@@ -215,6 +219,7 @@ func (c *Cache) gc() {
 			c.size -= item.size
 			c.list.Remove(element)
 			item.promotions = -2
+			c.elementsNb -= 1
 		}
 		element = prev
 	}
@@ -222,4 +227,8 @@ func (c *Cache) gc() {
 
 func (c *Cache) GetSize() int64 {
 	return c.size
+}
+
+func (c *Cache) GetElementsNumber() int64 {
+	return c.elementsNb
 }
